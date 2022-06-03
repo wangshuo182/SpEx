@@ -79,18 +79,21 @@ class Dataset(data.Dataset):
         return librosa.load(os.path.abspath(os.path.expanduser(file_path)), sr=self.sr)[0]
 
     def __getitem__(self, item):
-        mixture_path, target_path = self.dataset_list[item].split(" ")
+        # mixture_path, target_path = self.dataset_list[item].split(" ")
 
-        target_filename = self.get_filename(target_path)
-        target_speaker_id = self.get_speaker_id(target_filename)
+        # target_filename = self.get_filename(target_path)
+        # target_speaker_id = self.get_speaker_id(target_filename)
 
-        reference_wav_path_list = self.speaker_dict[target_speaker_id]
+        # reference_wav_path_list = self.speaker_dict[target_speaker_id]
 
-        reference_wav_path = random.choice(reference_wav_path_list)
+        # reference_wav_path = random.choice(reference_wav_path_list)
+        # reference_filename = self.get_filename(reference_wav_path)
+        # while target_filename == reference_filename:
+        #     reference_wav_path = random.choice(reference_wav_path_list)
+        #     reference_filename = self.get_filename(reference_wav_path)
+
+        mixture_path, reference_wav_path, target_path = self.dataset_list[item].split(" ")
         reference_filename = self.get_filename(reference_wav_path)
-        while target_filename == reference_filename:
-            reference_wav_path = random.choice(reference_wav_path_list)
-            reference_filename = self.get_filename(reference_wav_path)
 
         mixture_y = self.load_wav(mixture_path)
         target_y = self.load_wav(target_path)

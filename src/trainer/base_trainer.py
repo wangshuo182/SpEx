@@ -6,11 +6,14 @@ import numpy as np
 import torch
 from util import visualization
 from util.utils import prepare_empty_dir, ExecutionTime
+from datetime import datetime
 
 class BaseTrainer:
     def __init__(self, config, resume: bool, model, loss_function, optimizer):
-        self.n_gpu = torch.cuda.device_count()
+        self.n_gpu = 0 if config["use_cpu"] else torch.cuda.device_count()
         self.device = self._prepare_device(self.n_gpu, cudnn_deterministic=config["cudnn_deterministic"])
+        self.only_inference = config["only_inference"]
+        # print("n_gpu:{}".format(self.n_gpu))
 
         self.optimizer = optimizer
         self.loss_function = loss_function
@@ -32,8 +35,12 @@ class BaseTrainer:
         self.start_epoch = 1
         self.best_score = -np.inf if self.find_max else np.inf
         self.root_dir = Path(config["root_dir"]).expanduser().absolute() / config["experiment_name"]
-        self.checkpoints_dir = self.root_dir / "checkpoints"
-        self.logs_dir = self.root_dir / "logs"
+        if resume:
+            timestamp = config["resume_timestamp"]
+        else:
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        self.checkpoints_dir = self.root_dir / timestamp / "checkpoints"
+        self.logs_dir = self.root_dir / timestamp / "logs"
         prepare_empty_dir([self.checkpoints_dir, self.logs_dir], resume=resume)
 
         self.writer = visualization.writer(self.logs_dir.as_posix())
@@ -64,6 +71,8 @@ class BaseTrainer:
         model_path = model_path.expanduser().absolute()
         assert model_path.exists(), f"Preloaded *.pth file is not exist. Please check the file path: {model_path.as_posix()}"
         model_checkpoint = torch.load(model_path.as_posix(), map_location=self.device)
+        if model_path.suffix == '.tar':
+            model_checkpoint = model_checkpoint['model']
         if isinstance(self.model, torch.nn.DataParallel):
             self.model.module.load_state_dict(model_checkpoint)
         else:
@@ -84,6 +93,10 @@ class BaseTrainer:
         self.start_epoch = checkpoint["epoch"] + 1
         self.best_score = checkpoint["best_score"]
         self.optimizer.load_state_dict(checkpoint["optimizer"])
+        for state in self.optimizer.state.values():
+            for k, v in state.items():
+                if isinstance(v, torch.Tensor):
+                    state[k] = v.cuda()
 
         if isinstance(self.model, torch.nn.DataParallel):
             self.model.module.load_state_dict(checkpoint["model"])
@@ -195,7 +208,23 @@ class BaseTrainer:
     def _set_models_to_eval_mode(self):
         self.model.eval()
 
+    def _on_train_start(self):
+        pass
+
+    def _on_validation_epoch_start(self):
+        pass
+
     def train(self):
+        self._on_train_start()
+        if self.only_inference:
+            print("Model is preloaded, Inference is in progress in cv dataset...")
+            timer = ExecutionTime()
+            self._set_models_to_eval_mode()
+            self._on_validation_epoch_start()
+            score = self._validation_epoch(0)
+            print(f"[{timer.duration()} seconds] Done the inference.")
+            return
+
         for epoch in range(self.start_epoch, self.epochs + 1):
             print(f"============== {epoch} epoch ==============")
             print("[0 seconds] Begin training...")
@@ -212,12 +241,14 @@ class BaseTrainer:
                 print(f"[{timer.duration()} seconds] Training is over, Validation is in progress...")
 
                 self._set_models_to_eval_mode()
+                self._on_validation_epoch_start()
                 score = self._validation_epoch(epoch)
 
                 if self._is_best(score, find_max=self.find_max):
                     self._save_checkpoint(epoch, is_best=True)
 
             print(f"[{timer.duration()} seconds] End this epoch.")
+            print(f"[{score:.2f} scores] yield in this epoch.")
 
     def _train_epoch(self, epoch):
         raise NotImplementedError

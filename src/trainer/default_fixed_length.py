@@ -23,7 +23,7 @@ class Trainer(BaseTrainer):
         short_loss_total = 0.0
         middle_loss_total = 0.0
         long_loss_total = 0.0
-
+        iter = 1
         for mixture, target, reference, _ in tqdm(self.train_dataloader, desc="Training"):
             mixture = mixture.to(self.device).unsqueeze(1)
             target = target.to(self.device).unsqueeze(1)
@@ -43,16 +43,22 @@ class Trainer(BaseTrainer):
             middle_loss_total += middle_loss.item()
             long_loss_total += long_loss.item()
 
+            self.writer.add_scalars(f"Train/Loss", {'epoch_{}'.format(epoch): loss_total / iter}, iter)
+            self.writer.add_scalars(f"Train/Short Loss", {'epoch_{}'.format(epoch): short_loss_total / iter}, iter)
+            self.writer.add_scalars(f"Train/Middle Loss", {'epoch_{}'.format(epoch): middle_loss_total / iter}, iter)
+            self.writer.add_scalars(f"Train/Long Loss", {'epoch_{}'.format(epoch): long_loss_total / iter}, iter)
+            iter += 1
+
             # if i == 0:
                 # self.writer.add_figure(f"Train_Tensor/Mixture", self.image_grad(mixture_mag.cpu()), epoch)
                 # self.writer.add_figure(f"Train_Tensor/Target", self.image_grad(target_mag.cpu()), epoch)
                 # self.writer.add_figure(f"Train_Tensor/Enhanced", self.image_grad(enhanced_mag.detach().cpu()), epoch)
                 # self.writer.add_figure(f"Train_Tensor/Ref", self.image_grad(reference.cpu()), epoch)
 
-        self.writer.add_scalar(f"Train/Loss", loss_total / len(self.train_dataloader), epoch)
-        self.writer.add_scalar(f"Train/Short Loss", short_loss_total / len(self.train_dataloader), epoch)
-        self.writer.add_scalar(f"Train/Middle Loss", middle_loss_total / len(self.train_dataloader), epoch)
-        self.writer.add_scalar(f"Train/Long Loss", long_loss_total / len(self.train_dataloader), epoch)
+        # self.writer.add_scalar(f"Train/Loss", loss_total / len(self.train_dataloader), step=epoch)
+        # self.writer.add_scalar(f"Train/Short Loss", short_loss_total / len(self.train_dataloader), epoch)
+        # self.writer.add_scalar(f"Train/Middle Loss", middle_loss_total / len(self.train_dataloader), epoch)
+        # self.writer.add_scalar(f"Train/Long Loss", long_loss_total / len(self.train_dataloader), epoch)
 
     @torch.no_grad()
     def _validation_epoch(self, epoch):
@@ -80,19 +86,20 @@ class Trainer(BaseTrainer):
             if last_chunk.size(-1) != n_samples:
                 mixture_chunks[-1] = torch.cat((
                     mixture_chunks[-1],
-                    torch.zeros(1, n_samples - last_chunk.size(-1)).to(self.device)
-                ), dim=1)
+                    torch.zeros(1, 1, n_samples - last_chunk.size(-1)).to(self.device)
+                ), dim=-1)
 
             enhanced_chunks = []
             for mixture_chunk in mixture_chunks:
-                short_scale, middle_scale, long_scale, _ = self.model(mixture_chunk, reference).detach().cpu()
-                enhanced_chunks.append(short_scale * weights[0] + middle_scale * weights[1] + long_scale * weights[2])
+                short_scale, middle_scale, long_scale, _ = self.model(mixture_chunk, reference)
+                enhanced_chunks.append(short_scale.detach().cpu() * weights[0] + middle_scale.detach().cpu() * weights[1] + long_scale.detach().cpu() * weights[2])
 
             enhanced = torch.cat(enhanced_chunks, dim=1)  # [F, T]
-            enhanced = enhanced[:, :mixture.shape[1]]
+            # enhanced = enhanced[:, :, :mixture.shape[2]]
 
             mixture = mixture.reshape(-1).cpu().numpy()
             enhanced = enhanced.reshape(-1).cpu().numpy()
+            enhanced = enhanced[:len(mixture)]
             target = target.reshape(-1).cpu().numpy()
             reference = reference.reshape(-1).cpu().numpy()
 
@@ -113,7 +120,7 @@ class Trainer(BaseTrainer):
                         np.max(y),
                         np.min(y)
                     ))
-                    librosa.display.waveplot(y, sr=sr, ax=ax[j])
+                    librosa.display.waveshow(y, sr=sr, ax=ax[j])
                 plt.tight_layout()
                 self.writer.add_figure(f"Waveform/{name}", fig, epoch)
 

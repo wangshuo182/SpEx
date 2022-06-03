@@ -138,6 +138,8 @@ def test_32000():
     model = Model()
     mix = torch.rand(2, 1, 32000)
     ref = torch.rand(2, 1, 16384)
+    # mix = torch.rand(1, 1, 32000)
+    # ref = torch.rand(1, 1, 16384)
     model(mix, ref)
 
 

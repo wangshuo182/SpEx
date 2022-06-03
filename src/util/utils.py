@@ -101,12 +101,15 @@ def sample_fixed_length_data_aligned(data_a, data_b, sample_length):
     sample with fixed length from two dataset
     """
     assert len(data_a) == len(data_b), "Inconsistent dataset length, unable to sampling"
+    noise_eps_1 = 10E-8 * np.random.randn(sample_length)
+    noise_eps_2 = 10E-8 * np.random.randn(sample_length)
     if len(data_a) > sample_length:  # f"len(data_a) is {len(data_a)}, sample_length is {sample_length}."
         frames_total = len(data_a)
         start = np.random.randint(frames_total - sample_length + 1)
         # print(f"Random crop from: {start}")
         end = start + sample_length
-        return data_a[start:end], data_b[start:end]
+        return data_a[start:end]+noise_eps_1, data_b[start:end]+noise_eps_2
+        # return data_a[:sample_length]+noise_eps_1, data_b[:sample_length]+noise_eps_2
     elif len(data_a) == sample_length:
         return data_a, data_b
     else:

@@ -62,14 +62,14 @@ class Dataset(data.Dataset):
         return rname
 
     def __getitem__(self, item):
-        mixture_path, target_path = self.dataset_list[item].split(" ")
-
+        # mixture_path, target_path = self.dataset_list[item].split(" ")
+        mixture_path, reference_wav_path, target_path = self.dataset_list[item].split(" ")
         target_filename = self.get_filename(target_path)
-        reference_filename = self.get_reference(target_filename)
-        reference_wav_path = f"~/Datasets/SpeakerBeam/test_S1_real_ALL/test_S1_real_ALL_15s_ref/{reference_filename}"
+        # reference_filename = self.get_reference(target_filename)
+        # reference_wav_path = f"~/Datasets/SpeakerBeam/test_S1_real_ALL/test_S1_real_ALL_15s_ref/{reference_filename}"
 
         mixture_y = self.load_wav(mixture_path)
         target_y = self.load_wav(target_path)
         reference_y = self.load_wav(reference_wav_path)
 
-        return mixture_y.astype(np.float32), target_y.astype(np.float32), reference_y, target_filename
+        return mixture_y[None, ...].astype(np.float32), target_y[None, ...].astype(np.float32), reference_y[None, ...], target_filename
