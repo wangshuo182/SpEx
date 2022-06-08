@@ -3,10 +3,10 @@ description: 'null'
 # root_dir: exp/wavesplit
 root_dir: cache
 resume: false
-# resume_timestamp: 20220602-221821
+# resume_timestamp: 20220607-124130
 cudnn_deterministic: false
 trainer:
-  module: trainer.wavesplit_oracle_trainer
+  module: trainer.wavesplit_speaker_trainer
   main: Trainer
   epochs: 100
   save_checkpoint_interval: 1
@@ -20,7 +20,7 @@ trainer:
       visualize_spectrogram_limit: 20
       sr: 8000
 model:
-  module: model.wavesplit_oracle
+  module: model.wavesplit
   main: Wavesplit
   args:
     n_src: 2

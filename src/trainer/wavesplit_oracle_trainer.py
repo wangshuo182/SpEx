@@ -34,23 +34,17 @@ class Trainer(BaseTrainer):
             oracle_ids = oracle_ids.to(self.device)
             b, n_spk, frames = oracle_s.size()
 
-            # mixture = mixture.to(self.device).unsqueeze(1)
-            # target = target.to(self.device).unsqueeze(1)
-            # reference = reference.to(self.device).unsqueeze(1)
-
             self.optimizer.zero_grad()
 
-            # spk_vectors = self.model.get_speaker_vectors(mixtures)
-            # b, n_spk, embed_dim, frames = spk_vectors.size()
-            # spk_activity_mask = torch.ones((b, n_spk, frames)).to(mixtures)
-            # spk_loss, reordered = self.loss_function["spk_loss"](spk_vectors, spk_activity_mask, oracle_ids)
+            net = self.model.module if isinstance(self.model, torch.nn.DataParallel) else self.model
+
+
             spk_loss = 0
-            # reordered = reordered.mean(-1) # take centroid
             reordered = self.loss_function["spk"].spk_embeddings[oracle_ids] #.to(self.device)
 
-            separated = self.model.split_waves(mixture, reordered)
+            separated = net.split_waves(mixture, reordered)
 
-            if self.model.sep_stack.return_all:
+            if net.sep_stack.return_all:
                 n_layers = len(separated)
                 separated = torch.stack(separated).transpose(0, 1)
                 separated = separated.reshape(
@@ -59,15 +53,12 @@ class Trainer(BaseTrainer):
                 oracle_s = (
                     oracle_s.unsqueeze(1).repeat(1, n_layers, 1, 1).reshape(b * n_layers, n_spk, frames)
                 )
-            # short_scale_enhanced, middle_scale_enhanced, long_scale_enhanced, _ = self.model(mixture, reference)
-
-            # loss, (short_loss, middle_loss, long_loss)  = self.loss_function(target, short_scale_enhanced, middle_scale_enhanced, long_scale_enhanced)
-            
+    
             sep_loss = self.loss_function["sep"](separated, oracle_s).mean()
             loss = sep_loss + spk_loss
             
             loss.backward()
-            all_parameters = list(self.model.parameters()) + list(self.loss_function["spk"].parameters())
+            all_parameters = list(net.parameters()) + list(self.loss_function["spk"].parameters())
             param_norm = torch.nn.utils.clip_grad_norm_(all_parameters, 5)
             self.optimizer.step()
 
@@ -101,21 +92,26 @@ class Trainer(BaseTrainer):
         sdr_c_m = []  # Clean and mixture
         sdr_c_e = []  # Clean and enhanced
 
+        inter_avg_distance = []
+        intra_spk_distance = []
+        sdr_improve = []
+
         for i, (mixture, oracle_s, oracle_ids, filename) in tqdm(enumerate(self.validation_dataloader)):
             b, n_spk, frames = oracle_s.size()
             mixture = mixture.to(self.device)
             oracle_s = oracle_s.to(self.device)
             oracle_ids = oracle_ids.to(self.device)
 
+            net = self.model.module if isinstance(self.model, torch.nn.DataParallel) else self.model
             assert b == 1, "The batch size of validation dataloader must be 1."
             name = filename
 
             reordered = self.loss_function["spk"].spk_embeddings[oracle_ids] #.to(self.device)
             spk_loss = 0
 
-            separated = self.model.split_waves(mixture, reordered)
+            separated = net.split_waves(mixture, reordered)
 
-            if self.model.sep_stack.return_all:
+            if net.sep_stack.return_all:
                 separated = separated[-1]
 
             sep_loss = self.loss_function["sep"](separated, oracle_s).mean()
@@ -171,6 +167,22 @@ class Trainer(BaseTrainer):
             # print(f"Value: {c_e - c_m} \n"
             #       f"Mean: {get_metrics_ave(sdr_c_e) - get_metrics_ave(sdr_c_m)}")
 
+           # visulize the speaker id
+            oracle_emds = self.loss_function['spk'].spk_embeddings.gather(dim=0, index=oracle_ids.transpose(1,0).repeat(1,512))
+
+            inter_avg_distance.append(torch.norm(reordered[0,:,:]-oracle_emds,dim=1).sum(0).item()/2)
+            intra_spk_distance.append(torch.norm(reordered[0,0,:]-reordered[0,1,:]).item())
+            sdr_improve.append(c_e - c_m)
+            # sizes = 10
+            fig, ax = plt.subplots()
+            # ax.scatter(inter_avg_distance, sdr_improve, color='tab:blue',alpha=0.5)
+            sizes = [3]*len(intra_spk_distance)
+            ax.scatter(intra_spk_distance, sdr_improve, sizes=sizes, color='tab:red', alpha=0.5)
+            # plt.axis('equal')
+            # ax.set_xlim(0,2)
+            # ax.set_ylim(-30,30)
+            self.writer.add_figure("spk_distance/sdr", fig, epoch)
+
             if i <= visualize_spectrogram_limit:
                 fig, axes = plt.subplots(5, 1, figsize=(6, 10))
                 for k, mag in enumerate([
@@ -196,6 +208,8 @@ class Trainer(BaseTrainer):
             "target and enhanced": get_metrics_ave(sdr_c_e)
         }, epoch)
         score = get_metrics_ave(sdr_c_e)
+        print(f"[{score:.2f} scores] yield in this epoch.")
+
         return score
 
     def _save_checkpoint(self, epoch, is_best=False):
@@ -268,3 +282,25 @@ class Trainer(BaseTrainer):
         self.loss_function['spk'].load_state_dict(checkpoint["loss_spk_emd_table"])
 
         print(f"Model checkpoint loaded. Training will begin in {self.start_epoch} epoch.")
+
+    def _preload_model(self, model_path):
+        """
+        Preload *.pth file of the model at the start of the current experiment.
+
+        Args:
+            model_path(Path): the path of the *.pth file
+        """
+        model_path = model_path.expanduser().absolute()
+        assert model_path.exists(), f"Preloaded *.pth file is not exist. Please check the file path: {model_path.as_posix()}"
+        model_checkpoint = torch.load(model_path.as_posix(), map_location=self.device)
+        if model_path.suffix == '.tar':
+            spk_emd_table = model_checkpoint['loss_spk_emd_table']
+            model_checkpoint = model_checkpoint['model']
+        if isinstance(self.model, torch.nn.DataParallel):
+            self.model.module.load_state_dict(model_checkpoint)
+        else:
+            self.model.load_state_dict(model_checkpoint)
+
+        self.loss_function['spk'].load_state_dict(spk_emd_table)
+
+        print(f"Model preloaded successfully from {model_path.as_posix()}.")

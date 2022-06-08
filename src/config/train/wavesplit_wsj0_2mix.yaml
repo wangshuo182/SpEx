@@ -10,13 +10,14 @@ trainer:
   main: Trainer
   epochs: 100
   save_checkpoint_interval: 1
+  load_spk_emd: true
   validation:
     interval: 1
     find_max: true
     custom:
-      visualize_audio_limit: 10
-      visualize_waveform_limit: 10
-      visualize_spectrogram_limit: 10
+      visualize_audio_limit: 20
+      visualize_waveform_limit: 20
+      visualize_spectrogram_limit: 20
       sr: 8000
 model:
   module: model.wavesplit
@@ -44,25 +45,41 @@ loss_function:
     loss_type: distance
     gaussian_reg: 0
     distance_reg: 0
+    weight: 2
 optimizer:
   lr: 0.001
+  update_emb: true
+  lr_loss: 0.0005
+  update_spk: true
+  lr_spk: 0.0005
+  update_sep: true
+  lr_sep: 0.0005
 train_dataset:
   module: dataset.wsj0_oracle_mix_source_spkid
   main: Dataset
   args:
-    dataset_list: /workspace/myDataset/wsj0-mix/2speakers/wav8k/min/wav_list_tr.txt
-    # dataset_list: src/dataset/wav_list_tr.txt
+    # dataset_list: /workspace/myDataset/wsj0-mix/2speakers/wav8k/min/wav_list_tr.txt
+    dataset_list: src/dataset/wav_list_tr.txt
     segment: 1
-    limit: 100
+    limit: 200
     offset: 0
 validation_dataset:
   module: dataset.wsj0_oracle_mix_source_spkid
   main: Dataset
   args:
-    dataset_list: /workspace/myDataset/wsj0-mix/2speakers/wav8k/min/wav_list_cv.txt
-    # dataset_list: src/dataset/wav_list_cv.txt
-    segment: 5
+    # dataset_list: /workspace/myDataset/wsj0-mix/2speakers/wav8k/min/wav_list_cv.txt
+    dataset_list: src/dataset/wav_list_cv.txt
+    segment: 2
     # limit: 500
+    limit: 5
+    offset: 0
+test_dataset:
+  module: dataset.wsj0_oracle_mix_source_spkid
+  main: Dataset
+  args:
+    # dataset_list: /workspace/myDataset/wsj0-mix/2speakers/wav8k/min/wav_list_cv.txt
+    dataset_list: src/dataset/wav_list_tt.txt
+    segment: 5
     limit: 5
     offset: 0
 train_dataloader:

@@ -63,7 +63,7 @@ class SpeakerVectorLoss(nn.Module):
         distance = ((c_spk_vec_perm - utt_embeddings) ** 2).sum(2)
 
         intra_spk = ((c_spk_vec_perm[:, 0] - c_spk_vec_perm[:, 1]) ** 2).sum(1)
-        return distance.sum(1) + F.relu(1.0 - intra_spk)  # ok for two speakers
+        return distance.sum(1) + F.relu(1.0 - intra_spk) * 2  # ok for two speakers
 
     def _l_local_speaker(self, c_spk_vec_perm, spk_embeddings, spk_labels, spk_mask):
 
@@ -205,7 +205,6 @@ def si_sdr_loss():
 
     return _loss_function
 
-
 def multi_scale_si_sdr_loss(weights):
     def _loss_function(ref, short_est, middle_est, long_est):
         assert len(weights) == 3
@@ -217,9 +216,9 @@ def multi_scale_si_sdr_loss(weights):
 
     return _loss_function
 
-def wavesplit_loss(n_speakers=2, embed_dim=512, loss_type="distance", gaussian_reg=0, distance_reg=0):
+def wavesplit_loss(n_speakers=2, embed_dim=512, loss_type="distance", gaussian_reg=0, distance_reg=0, weight=2):
     loss_spk = SpeakerVectorLoss(
-        n_speakers, embed_dim, loss_type=loss_type, distance_reg=distance_reg, gaussian_reg=gaussian_reg
+        n_speakers, embed_dim, loss_type=loss_type, gaussian_reg=gaussian_reg, distance_reg=distance_reg, weight=weight
     )
     loss_sep = ClippedSDR()
     return {'spk':loss_spk, 'sep':loss_sep}

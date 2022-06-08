@@ -14,10 +14,12 @@ class BaseTrainer:
         self.device = self._prepare_device(self.n_gpu, cudnn_deterministic=config["cudnn_deterministic"])
         self.only_inference = config["only_inference"]
         # print("n_gpu:{}".format(self.n_gpu))
-
+        
+        self.load_spk_emd = config['trainer']['load_spk_emd']
         self.optimizer = optimizer
         self.loss_function = loss_function
         self.model = model.to(self.device)
+        # TODO
         if self.n_gpu > 1:
             self.model = torch.nn.DataParallel(self.model, device_ids=list(range(self.n_gpu)))
 
@@ -220,8 +222,9 @@ class BaseTrainer:
             print("Model is preloaded, Inference is in progress in cv dataset...")
             timer = ExecutionTime()
             self._set_models_to_eval_mode()
-            self._on_validation_epoch_start()
-            score = self._validation_epoch(0)
+            # self._on_validation_epoch_start()
+            score = self._inference()
+            print(f"[{timer.duration()} seconds] Done the inference.")
             print(f"[{timer.duration()} seconds] Done the inference.")
             return
 
@@ -242,16 +245,23 @@ class BaseTrainer:
 
                 self._set_models_to_eval_mode()
                 self._on_validation_epoch_start()
-                score = self._validation_epoch(epoch)
+                val_score = self._validation_epoch(epoch)
 
-                if self._is_best(score, find_max=self.find_max):
+                if self._is_best(val_score, find_max=self.find_max):
                     self._save_checkpoint(epoch, is_best=True)
-
+            
+            test_score = self._test_epoch(epoch)
+            
             print(f"[{timer.duration()} seconds] End this epoch.")
-            print(f"[{score:.2f} scores] yield in this epoch.")
+            print(f"[val: {val_score:.2f}] [test: {test_score:.2f}] scores yield in this epoch.")
 
     def _train_epoch(self, epoch):
         raise NotImplementedError
 
     def _validation_epoch(self, epoch):
         raise NotImplementedError
+
+    def _test_epoch(self, epoch):
+        raise NotImplementedError
+
+

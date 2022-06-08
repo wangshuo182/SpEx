@@ -20,6 +20,7 @@ def main(config):
     train_dataset = initialize_config(config["train_dataset"])
     config["validation_dataset"]["args"]["spk2indx"] = train_dataset.get_spk2indx()
     val_dataset = initialize_config(config["validation_dataset"])
+    test_dataset = initialize_config(config["test_dataset"])
 
     train_dataloader = DataLoader(
         dataset = train_dataset,
@@ -37,13 +38,29 @@ def main(config):
         drop_last=True
     )
 
+    test_dataloader = DataLoader(
+        dataset=test_dataset,
+        shuffle=False,
+        batch_size=1,
+        drop_last=True
+    )
+
     model = initialize_config(config["model"])
 
     config["loss_function"]["args"]["n_speakers"] = len(train_dataset.spk2indx)
     loss_function = initialize_config(config["loss_function"])
 
+
+    trainable_params = []
+    if config['optimizer']['update_emb']:
+        trainable_params.append({'params':loss_function['spk'].parameters(), 'lr': config['optimizer']['lr_loss']})
+    if config['optimizer']['update_spk']:
+        trainable_params.append({'params':model.spk_stack.parameters(), 'lr': config['optimizer']['lr_spk']})
+    if config['optimizer']['update_sep']:
+        trainable_params.append({'params':model.sep_stack.parameters(), 'lr': config['optimizer']['lr_sep']})
+
     optimizer = torch.optim.Adam(
-        params=list(model.parameters()) + list(loss_function['spk'].parameters()),
+        params=trainable_params,
         lr=config["optimizer"]["lr"]
     )
 
@@ -56,7 +73,8 @@ def main(config):
         loss_function=loss_function,
         optimizer=optimizer,
         train_dataloader=train_dataloader,
-        validation_dataloader=valid_dataloader
+        validation_dataloader=valid_dataloader,
+        test_dataloader=test_dataloader
     )
 
     trainer.train()

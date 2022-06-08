@@ -44,24 +44,24 @@ class Trainer(BaseTrainer):
             b, n_spk, embed_dim, frames = spk_vectors.size()
             spk_activity_mask = torch.ones((b, n_spk, frames)).to(mixture)
             spk_loss, reordered = self.loss_function["spk"](spk_vectors, spk_activity_mask, oracle_ids)
-            
+
             reordered = reordered.mean(-1) # take centroid
             # reordered = self.loss_function["spk"].spk_embeddings[oracle_ids] #.to(self.device)
             # spk_loss = torch.Tensor([0]).to(self.device)
 
-            separated = net.split_waves(mixture, reordered)
+            # separated = net.split_waves(mixture, reordered)
 
-            if net.sep_stack.return_all:
-                n_layers = len(separated)
-                separated = torch.stack(separated).transpose(0, 1)
-                separated = separated.reshape(
-                    b * n_layers, n_spk, frames
-                )  # in validation take only last layer
-                oracle_s = (
-                    oracle_s.unsqueeze(1).repeat(1, n_layers, 1, 1).reshape(b * n_layers, n_spk, frames)
-                )
+            # if net.sep_stack.return_all:
+            #     n_layers = len(separated)
+            #     separated = torch.stack(separated).transpose(0, 1)
+            #     separated = separated.reshape(
+            #         b * n_layers, n_spk, frames
+            #     )  # in validation take only last layer
+            #     oracle_s = (
+            #         oracle_s.unsqueeze(1).repeat(1, n_layers, 1, 1).reshape(b * n_layers, n_spk, frames)
+            #     )
             
-            sep_loss = self.loss_function["sep"](separated, oracle_s).mean()
+            sep_loss = 0#self.loss_function["sep"](separated, oracle_s).mean()
             loss = sep_loss + spk_loss
             
             loss.backward()
@@ -71,14 +71,14 @@ class Trainer(BaseTrainer):
 
             loss_total += loss.item()
             loss_step_sum['spk'] += spk_loss.item()
-            loss_step_sum['sep'] += sep_loss.item()
-            loss_step_sum['all'] += loss.item()
+            # loss_step_sum['sep'] += sep_loss.item()
+            # loss_step_sum['all'] += loss.item()
 
             if iter % 10 == 0 and iter > 0 :
                 self.writer.add_scalars(f"Train/Loss", {
                     'epoch_spk_{}'.format(epoch): loss_step_sum['spk'] / 10,
-                    'epoch_sep_{}'.format(epoch): loss_step_sum['sep'] / 10,
-                    'epoch_all_{}'.format(epoch): loss_step_sum['all'] / 10
+                    # 'epoch_sep_{}'.format(epoch): loss_step_sum['sep'] / 10,
+                    # 'epoch_all_{}'.format(epoch): loss_step_sum['all'] / 10
                 }, iter)
                 for i in loss_step_sum.keys(): loss_step_sum[i] = 0.0 
 
@@ -151,9 +151,9 @@ class Trainer(BaseTrainer):
             self.sdr_improve.append(c_e - c_m)
 
             # visualize spec / audio / spk_id_distribution
-            self._visuliza_spec_audio(epoch, i, mixture, s1, s2, s1_clean, s2_clean, name, c_e, prefix='val_')
+            self._visuliza_spec_audio(epoch, i, mixture, s1, s2, s1_clean, s2_clean, name, c_e)
 
-        self.writer.add_scalars(f"val_Metrics/SDR", {
+        self.writer.add_scalars(f"Metrics/Validation_SDR", {
             "target and mixture": get_metrics_ave(sdr_c_m),
             "target and enhanced": get_metrics_ave(sdr_c_e)
         }, epoch)
@@ -161,7 +161,7 @@ class Trainer(BaseTrainer):
         return score
 
     @torch.no_grad()
-    def _inference(self, epoch=0):
+    def _inference(self):
         get_metrics_ave = lambda metrics: np.sum(metrics) / len(metrics)
 
         sdr_c_m = []  # Clean and mixture
@@ -194,8 +194,7 @@ class Trainer(BaseTrainer):
                 )
                 reordered.append(cluster_centers)
 
-            reordered = torch.stack(reordered)
-            reordered = reordered.to(self.device)
+            reordered = torch.stack(reordered)            
             # spk_activity_mask = torch.ones((b, n_spk, frames)).to(mixture)
             # spk_loss, reordered = self.loss_function["spk"](spk_vectors, spk_activity_mask, oracle_ids)
             
@@ -239,27 +238,27 @@ class Trainer(BaseTrainer):
             self.sdr_improve.append(c_e - c_m)
 
             # visualize spec / audio / spk_id_distribution
-            self._visuliza_spec_audio(epoch, i, mixture, s1, s2, s1_clean, s2_clean, name, c_e, prefix='test_')
+            self._visuliza_spec_audio(0, 0, mixture, s1, s2, s1_clean, s2_clean, name, c_e)
 
-        self.writer.add_scalars(f"test_Metrics/SDR", {
+        self.writer.add_scalars(f"Metrics/Test_SDR", {
             "target and mixture": get_metrics_ave(sdr_c_m),
             "target and enhanced": get_metrics_ave(sdr_c_e)
         }, 0)
         score = get_metrics_ave(sdr_c_e)
         return score
 
-    def _visuliza_spec_audio(self, epoch, i, mixture, s1, s2, s1_clean, s2_clean, name, c_e, spk_vct=None, oracle_ids=None, prefix='_'):
+    def _visuliza_spec_audio(self, epoch, i, mixture, s1, s2, s1_clean, s2_clean, name, c_e, spk_vct=None, oracle_ids=None):
         visualize_audio_limit = self.validation_custom_config["visualize_audio_limit"]
         visualize_waveform_limit = self.validation_custom_config["visualize_waveform_limit"]
         visualize_spectrogram_limit = self.validation_custom_config["visualize_spectrogram_limit"]
         sr = self.validation_custom_config["sr"]
             # Visualize audio
         if i <= visualize_audio_limit:
-            self.writer.add_audio(f"{prefix}Speech/{name}_Mixture", mixture, epoch, sample_rate=sr)
-            self.writer.add_audio(f"{prefix}Speech/{name}_s1", s1, epoch, sample_rate=sr)
-            self.writer.add_audio(f"{prefix}Speech/{name}_s2", s2, epoch, sample_rate=sr)
-            self.writer.add_audio(f"{prefix}Speech/{name}_s1_clean", s1_clean, epoch, sample_rate=sr)
-            self.writer.add_audio(f"{prefix}Speech/{name}_s2_clean", s2_clean, epoch, sample_rate=sr)
+            self.writer.add_audio(f"Speech/{name}_Mixture", mixture, epoch, sample_rate=sr)
+            self.writer.add_audio(f"Speech/{name}_s1", s1, epoch, sample_rate=sr)
+            self.writer.add_audio(f"Speech/{name}_s2", s2, epoch, sample_rate=sr)
+            self.writer.add_audio(f"Speech/{name}_s1_clean", s1_clean, epoch, sample_rate=sr)
+            self.writer.add_audio(f"Speech/{name}_s2_clean", s2_clean, epoch, sample_rate=sr)
             # self.writer.add_audio(f"Speech/{name}_Reference", reference, epoch, sample_rate=sr)
 
         # Visualize waveform
@@ -274,8 +273,14 @@ class Trainer(BaseTrainer):
                 ))
                 librosa.display.waveshow(y, sr=sr, ax=ax[j])
             plt.tight_layout()
-            self.writer.add_figure(f"{prefix}Waveform/{name}", fig, epoch)
+            self.writer.add_figure(f"Waveform/{name}", fig, epoch)
 
+        # Visualize spectrogram
+        mixture_mag, _ = librosa.magphase(librosa.stft(mixture, n_fft=320, hop_length=160))
+        s1_mag, _ = librosa.magphase(librosa.stft(s1, n_fft=320, hop_length=160))
+        s2_mag, _ = librosa.magphase(librosa.stft(s2, n_fft=320, hop_length=160))
+        s1_clean_mag, _ = librosa.magphase(librosa.stft(s1_clean, n_fft=320, hop_length=160))
+        s2_clean_mag, _ = librosa.magphase(librosa.stft(s2_clean, n_fft=320, hop_length=160))
 
         # print(f"Value: {c_e - c_m} \n"
         #       f"Mean: {get_metrics_ave(sdr_c_e) - get_metrics_ave(sdr_c_m)}")
@@ -289,16 +294,9 @@ class Trainer(BaseTrainer):
         # plt.axis('equal')
         ax.set_xlim(0,2)
         ax.set_ylim(-30,30)
-        self.writer.add_figure(f"{prefix}spk_distance/sdr", fig, epoch)
+        self.writer.add_figure("spk_distance/sdr", fig, epoch)
 
-        # Visualize spectrogram
         if i <= visualize_spectrogram_limit:
-            mixture_mag, _ = librosa.magphase(librosa.stft(mixture, n_fft=320, hop_length=160))
-            s1_mag, _ = librosa.magphase(librosa.stft(s1, n_fft=320, hop_length=160))
-            s2_mag, _ = librosa.magphase(librosa.stft(s2, n_fft=320, hop_length=160))
-            s1_clean_mag, _ = librosa.magphase(librosa.stft(s1_clean, n_fft=320, hop_length=160))
-            s2_clean_mag, _ = librosa.magphase(librosa.stft(s2_clean, n_fft=320, hop_length=160))
-
             fig, axes = plt.subplots(5, 1, figsize=(6, 10))
             for k, mag in enumerate([
                 mixture_mag,
@@ -316,11 +314,7 @@ class Trainer(BaseTrainer):
                 librosa.display.specshow(librosa.amplitude_to_db(mag), cmap="magma", y_axis="linear", ax=axes[k],
                                         sr=sr)
             plt.tight_layout()
-            self.writer.add_figure(f"{prefix}Spectrogram/{name}", fig, epoch)
-
-    @torch.no_grad()
-    def _test_epoch(self, epoch):
-        return self._inference(epoch=epoch)
+            self.writer.add_figure(f"Spectrogram/{name}", fig, epoch)
 
     def _save_checkpoint(self, epoch, is_best=False):
         """Save checkpoint to <root_dir>/checkpoints directory, which contains:
@@ -411,7 +405,7 @@ class Trainer(BaseTrainer):
             self.model.module.load_state_dict(model_checkpoint)
         else:
             self.model.load_state_dict(model_checkpoint)
-
+        
         if self.load_spk_emd:
             self.loss_function['spk'].load_state_dict(spk_emd_table)
 
