@@ -1,7 +1,7 @@
 seed: 182
 description: 'null'
-# root_dir: exp/wavesplit
-root_dir: cache
+root_dir: exp/wavesplit
+# root_dir: cache
 resume: false
 # resume_timestamp: 20220601-235555
 cudnn_deterministic: false
@@ -11,13 +11,14 @@ trainer:
   epochs: 100
   save_checkpoint_interval: 1
   load_spk_emd: true
+  speaker_dropout: 0.2
   validation:
     interval: 1
     find_max: true
     custom:
-      visualize_audio_limit: 20
-      visualize_waveform_limit: 20
-      visualize_spectrogram_limit: 20
+      visualize_audio_limit: 10
+      visualize_waveform_limit: 10
+      visualize_spectrogram_limit: 10
       sr: 8000
 model:
   module: model.wavesplit
@@ -43,8 +44,8 @@ loss_function:
   args:
     embed_dim: 512
     loss_type: distance
-    gaussian_reg: 0
-    distance_reg: 0
+    gaussian_reg: 0.2
+    distance_reg: 0.3
     weight: 2
 optimizer:
   lr: 0.001
@@ -61,7 +62,7 @@ train_dataset:
     # dataset_list: /workspace/myDataset/wsj0-mix/2speakers/wav8k/min/wav_list_tr.txt
     dataset_list: src/dataset/wav_list_tr.txt
     segment: 1
-    limit: 200
+    # limit: 200
     offset: 0
 validation_dataset:
   module: dataset.wsj0_oracle_mix_source_spkid
@@ -70,8 +71,8 @@ validation_dataset:
     # dataset_list: /workspace/myDataset/wsj0-mix/2speakers/wav8k/min/wav_list_cv.txt
     dataset_list: src/dataset/wav_list_cv.txt
     segment: 2
-    # limit: 500
-    limit: 5
+    limit: 500
+    # limit: 5
     offset: 0
 test_dataset:
   module: dataset.wsj0_oracle_mix_source_spkid
@@ -80,7 +81,7 @@ test_dataset:
     # dataset_list: /workspace/myDataset/wsj0-mix/2speakers/wav8k/min/wav_list_cv.txt
     dataset_list: src/dataset/wav_list_tt.txt
     segment: 5
-    limit: 5
+    limit: 500
     offset: 0
 train_dataloader:
   batch_size: 1

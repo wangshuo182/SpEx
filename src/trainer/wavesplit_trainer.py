@@ -19,6 +19,7 @@ class Trainer(BaseTrainer):
         self.train_dataloader = train_dataloader
         self.validation_dataloader = validation_dataloader
         self.test_dataloader = test_dataloader
+        self.speaker_dropout_rate = config['trainer']['speaker_dropout']
 
     def _on_train_start(self):
         self.loss_function["spk"] = self.loss_function["spk"].to(self.device)
@@ -49,6 +50,11 @@ class Trainer(BaseTrainer):
             # reordered = self.loss_function["spk"].spk_embeddings[oracle_ids] #.to(self.device)
             # spk_loss = torch.Tensor([0]).to(self.device)
 
+            # speaker dropout
+            for i in range(b):
+                if np.random.rand() < self.speaker_dropout_rate:  # randomly dropout
+                    reordered[i,np.random.choice(n_spk),:]=0
+            
             separated = net.split_waves(mixture, reordered)
 
             if net.sep_stack.return_all:
