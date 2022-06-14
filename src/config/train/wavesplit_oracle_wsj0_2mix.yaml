@@ -25,13 +25,13 @@ model:
   args:
     n_src: 2
     spk_stack_kwargs:
-      embed_dim: 512
+      embed_dim: 256
       n_blocks: 14
       # n_blocks: 2
       n_repeats: 1
     sep_stack_kwargs:
-      embed_dim: 512
-      spk_vec_dim: 512
+      embed_dim: 256
+      spk_vec_dim: 256
       n_blocks: 10
       # n_blocks: 2
       n_repeats: 4
@@ -42,7 +42,7 @@ loss_function:
   main: wavesplit_loss
   train_emb: false
   args:
-    embed_dim: 512
+    embed_dim: 256
     loss_type: distance
     gaussian_reg: 0
     distance_reg: 0
@@ -53,7 +53,7 @@ optimizer:
   lr_sep: 0.001
   lr_loss: 0.001
 train_dataset:
-  module: dataset.wsj0_oracle_mix_source_spkid
+  module: dataset.wsj0_mix_source_spkid_name
   main: Dataset
   args:
     # dataset_list: /workspace/myDataset/wsj0-mix/2speakers/wav8k/min/wav_list_tr.txt
@@ -62,7 +62,7 @@ train_dataset:
     # limit: 500
     offset: 0
 validation_dataset:
-  module: dataset.wsj0_oracle_mix_source_spkid
+  module: dataset.wsj0_mix_source_spkid_name
   main: Dataset
   args:
     # dataset_list: /workspace/myDataset/wsj0-mix/2speakers/wav8k/min/wav_list_cv.txt
@@ -72,7 +72,7 @@ validation_dataset:
     # limit: 50
     offset: 0
 test_dataset:
-  module: dataset.wsj0_oracle_mix_source_spkid
+  module: dataset.wsj0_mix_source_spkid_name
   main: Dataset
   args:
     # dataset_list: /workspace/myDataset/wsj0-mix/2speakers/wav8k/min/wav_list_cv.txt

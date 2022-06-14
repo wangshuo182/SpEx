@@ -16,6 +16,8 @@ class BaseTrainer:
         # print("n_gpu:{}".format(self.n_gpu))
         
         self.load_spk_emd = config['trainer']['load_spk_emd']
+        self.load_spk_net = config['trainer']['load_spk_net']
+        self.load_sep_net = config['trainer']['load_sep_net']
         self.optimizer = optimizer
         self.loss_function = loss_function
         self.model = model.to(self.device)

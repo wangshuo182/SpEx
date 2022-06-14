@@ -27,159 +27,82 @@ class Trainer(BaseTrainer):
         self.loss_function["spk"] = self.loss_function["spk"].to(self.device)
 
     def _train_epoch(self, epoch):
-        loss_total = 0.0
-        loss_step_sum = {'spk':0.0, 'sep':0.0, 'all':0.0}
 
         for iter, (mixture, oracle_s, oracle_ids, _) in enumerate(tqdm(self.train_dataloader, desc="Training")):
             mixture = mixture.to(self.device)
-            oracle_s = oracle_s.to(self.device)
             oracle_ids = oracle_ids.to(self.device)
-            b, n_spk, frames = oracle_s.size()
 
             self.optimizer.zero_grad()
-
             net = self.model.module if isinstance(self.model, torch.nn.DataParallel) else self.model
 
             spk_vectors = net.get_speaker_vectors(mixture)
-            b, n_spk, embed_dim, frames = spk_vectors.size()
+            b, n_spk, _, frames = spk_vectors.size()
             spk_activity_mask = torch.ones((b, n_spk, frames)).to(mixture)
-            spk_loss, reordered = self.loss_function["spk"](spk_vectors, spk_activity_mask, oracle_ids)
-
-            reordered = reordered.mean(-1) # take centroid
-            # reordered = self.loss_function["spk"].spk_embeddings[oracle_ids] #.to(self.device)
-            # spk_loss = torch.Tensor([0]).to(self.device)
-
-            # separated = net.split_waves(mixture, reordered)
-
-            # if net.sep_stack.return_all:
-            #     n_layers = len(separated)
-            #     separated = torch.stack(separated).transpose(0, 1)
-            #     separated = separated.reshape(
-            #         b * n_layers, n_spk, frames
-            #     )  # in validation take only last layer
-            #     oracle_s = (
-            #         oracle_s.unsqueeze(1).repeat(1, n_layers, 1, 1).reshape(b * n_layers, n_spk, frames)
-            #     )
+            spk_loss, _ = self.loss_function["spk"](spk_vectors, spk_activity_mask, oracle_ids)
             
-            sep_loss = 0#self.loss_function["sep"](separated, oracle_s).mean()
-            loss = sep_loss + spk_loss
-            
-            loss.backward()
+            spk_loss.backward()
             all_parameters = list(net.parameters()) + list(self.loss_function["spk"].parameters())
-            param_norm = torch.nn.utils.clip_grad_norm_(all_parameters, 5)
+            grad_norm = torch.nn.utils.clip_grad_norm_(all_parameters, 2)
             self.optimizer.step()
 
-            loss_total += loss.item()
-            loss_step_sum['spk'] += spk_loss.item()
-            # loss_step_sum['sep'] += sep_loss.item()
-            # loss_step_sum['all'] += loss.item()
-
-            if iter % 10 == 0 and iter > 0 :
-                self.writer.add_scalars(f"Train/Loss", {
-                    'epoch_spk_{}'.format(epoch): loss_step_sum['spk'] / 10,
-                    # 'epoch_sep_{}'.format(epoch): loss_step_sum['sep'] / 10,
-                    # 'epoch_all_{}'.format(epoch): loss_step_sum['all'] / 10
-                }, iter)
-                for i in loss_step_sum.keys(): loss_step_sum[i] = 0.0 
-
-            # if i == 0:
-                # self.writer.add_figure(f"Train_Tensor/Mixture", self.image_grad(mixture_mag.cpu()), epoch)
-                # self.writer.add_figure(f"Train_Tensor/Target", self.image_grad(target_mag.cpu()), epoch)
-                # self.writer.add_figure(f"Train_Tensor/Enhanced", self.image_grad(enhanced_mag.detach().cpu()), epoch)
-                # self.writer.add_figure(f"Train_Tensor/Ref", self.image_grad(reference.cpu()), epoch)
+            self.writer.add_scalar("train/spk_loss", spk_loss, iter + (epoch-1)*len(self.train_dataloader))
+            self.writer.add_scalar("train/epoch", epoch, iter + (epoch-1)*len(self.train_dataloader))
 
     @torch.no_grad()
     def _validation_epoch(self, epoch):
         get_metrics_ave = lambda metrics: np.sum(metrics) / len(metrics)
 
-        sdr_c_m = []  # Clean and mixture
-        sdr_c_e = []  # Clean and enhanced
-
-        self.intra_avg_distance = []
-        self.inter_spk_distance = []
-        self.sdr_improve = []
+        samples = {'name':[], 'intra_avg_distance':[], 'inter_spk_distance':[], 'sdr_improve':[]}
+        loss_sum = 0
 
         for i, (mixture, oracle_s, oracle_ids, filename) in tqdm(enumerate(self.validation_dataloader)):
             b, n_spk, frames = oracle_s.size()
-            mixture = mixture.to(self.device)
-            oracle_s = oracle_s.to(self.device)
-            oracle_ids = oracle_ids.to(self.device)
-
-            net = self.model.module if isinstance(self.model, torch.nn.DataParallel) else self.model
             assert b == 1, "The batch size of validation dataloader must be 1."
-            name = filename
+            mixture = mixture.to(self.device)
+            oracle_ids = oracle_ids.to(self.device)
+            net = self.model.module if isinstance(self.model, torch.nn.DataParallel) else self.model
 
             spk_vectors = net.get_speaker_vectors(mixture)
             b, n_spk, embed_dim, frames = spk_vectors.size()
             spk_activity_mask = torch.ones((b, n_spk, frames)).to(mixture)
             spk_loss, reordered = self.loss_function["spk"](spk_vectors, spk_activity_mask, oracle_ids)
-            
+
+            loss_sum += spk_loss
             reordered = reordered.mean(-1) # take centroid
-            # reordered = self.loss_function["spk"].spk_embeddings[oracle_ids] #.to(self.device)
-            # spk_loss = torch.Tensor([0]).to(self.device)
-
-            separated = net.split_waves(mixture, reordered)
-
-            if net.sep_stack.return_all:
-                separated = separated[-1]
-
-            sep_loss = self.loss_function["sep"](separated, oracle_s).mean()
-            loss = sep_loss + spk_loss
 
             mixture = mixture.cpu().numpy().squeeze()
-            separated = separated.cpu().numpy().squeeze()
             oracle_s = oracle_s.cpu().numpy().squeeze()
             s1_clean = oracle_s[0]
             s2_clean = oracle_s[1]
-            
-            s1 = separated[0]
-            s2 = separated[1]
-            s1 = ((s1 - s1.mean())/s1.std())*s1_clean.std()
-            s2 = ((s2 - s2.mean())/s2.std())*s2_clean.std()
-
-            # Metrics
-            c_m = (compute_SDR(s1_clean, mixture) + compute_SDR(s2_clean, mixture)) / 2
-            c_e = (compute_SDR(s1_clean, s1) + compute_SDR(s2_clean, s2)) / 2
-            sdr_c_m.append(c_m)
-            sdr_c_e.append(c_e)
 
             # spk distance
-            oracle_emds = self.loss_function['spk'].spk_embeddings.gather(dim=0, index=oracle_ids.transpose(1,0).repeat(1,512))
-
-            self.intra_avg_distance.append(torch.norm(reordered[0,:,:]-oracle_emds,dim=1).sum(0).item()/2)
-            self.inter_spk_distance.append(torch.norm(reordered[0,0,:]-reordered[0,1,:]).item())
-            self.sdr_improve.append(c_e - c_m)
-
-            # visualize spec / audio / spk_id_distribution
-            self._visuliza_spec_audio(epoch, i, mixture, s1, s2, s1_clean, s2_clean, name, c_e)
-
-        self.writer.add_scalars(f"Metrics/Validation_SDR", {
-            "target and mixture": get_metrics_ave(sdr_c_m),
-            "target and enhanced": get_metrics_ave(sdr_c_e)
-        }, epoch)
-        score = get_metrics_ave(sdr_c_e)
-        return score
+            oracle_emds = self.loss_function['spk'].spk_embeddings.gather(dim=0, index=oracle_ids.transpose(1,0).repeat(1,embed_dim))
+            samples['intra_avg_distance'].append(torch.norm(reordered[0,:,:]-oracle_emds,dim=1).sum(0).item()/2)
+            samples['inter_spk_distance'].append(torch.norm(reordered[0,0,:]-reordered[0,1,:]).item())
+            samples['name'].append(filename)
+        
+        # Loss
+        self.writer.add_scalar("validation/spk_loss", loss_sum/len(self.validation_dataloader), epoch)
+        # intra_spk_distance / inter_spk_distance / cross spk distance
+        self._visuliza_spk_distribution(samples, epoch, spk_emd_table=self.loss_function['spk'].spk_embeddings, spk2indx=self.train_dataloader.dataset.spk2indx, prefix='val')
+        return loss_sum/len(self.validation_dataloader)
 
     @torch.no_grad()
-    def _inference(self):
+    def _inference(self, epoch=0):
         get_metrics_ave = lambda metrics: np.sum(metrics) / len(metrics)
 
-        sdr_c_m = []  # Clean and mixture
-        sdr_c_e = []  # Clean and enhanced
-
-        self.intra_avg_distance = []
-        self.inter_spk_distance = []
-        self.sdr_improve = []
-
+        samples = {
+            'name':[],
+            'intra_avg_distance':[],
+            'inter_spk_distance':[],
+            'sdr_improve':[]
+        }   
         for i, (mixture, oracle_s, oracle_ids, filename) in tqdm(enumerate(self.test_dataloader)):
             b, n_spk, frames = oracle_s.size()
-            mixture = mixture.to(self.device)
-            oracle_s = oracle_s.to(self.device)
-            oracle_ids = oracle_ids.to(self.device)
-
-            net = self.model.module if isinstance(self.model, torch.nn.DataParallel) else self.model
             assert b == 1, "The batch size of validation dataloader must be 1."
-            name = filename
+            mixture = mixture.to(self.device)
+            oracle_ids = oracle_ids.to(self.device)
+            net = self.model.module if isinstance(self.model, torch.nn.DataParallel) else self.model
 
             spk_vectors = net.get_speaker_vectors(mixture)
             b, n_spk, embed_dim, frames = spk_vectors.size()
@@ -194,71 +117,32 @@ class Trainer(BaseTrainer):
                 )
                 reordered.append(cluster_centers)
 
-            reordered = torch.stack(reordered)            
-            # spk_activity_mask = torch.ones((b, n_spk, frames)).to(mixture)
-            # spk_loss, reordered = self.loss_function["spk"](spk_vectors, spk_activity_mask, oracle_ids)
-            
-            # reordered = reordered.mean(-1) # take centroid
-            # reordered = self.loss_function["spk"].spk_embeddings[oracle_ids] #.to(self.device)
-            # spk_loss = torch.Tensor([0]).to(self.device)
-
-            separated = net.split_waves(mixture, reordered)
-
-            if net.sep_stack.return_all:
-                separated = separated[-1]
-
-            # sep_loss = self.loss_function["sep"](separated, oracle_s).mean()
-            # loss = sep_loss + spk_loss
-
-            mixture = mixture.cpu().numpy().squeeze()
-            separated = separated.cpu().numpy().squeeze()
-            oracle_s = oracle_s.cpu().numpy().squeeze()
-            s1_clean = oracle_s[0]
-            s2_clean = oracle_s[1]
-            
-            s1 = separated[0]
-            s2 = separated[1]
-            s1 = ((s1 - s1.mean())/s1.std())*s1_clean.std()
-            s2 = ((s2 - s2.mean())/s2.std())*s2_clean.std()
-
-            # Metrics
-            c_m = (compute_SDR(s1_clean, mixture) + compute_SDR(s2_clean, mixture)) / 2
-            c_e_p1 = (compute_SDR(s1_clean, s1) + compute_SDR(s2_clean, s2)) / 2
-            c_e_p2 = (compute_SDR(s1_clean, s2) + compute_SDR(s2_clean, s1)) / 2
-            c_e = max(c_e_p1,c_e_p2)
-
-            sdr_c_m.append(c_m)
-            sdr_c_e.append(c_e)
-
+            reordered = torch.stack(reordered)
             # spk distance
-            # oracle_emds = self.loss_function['spk'].spk_embeddings.gather(dim=0, index=oracle_ids.transpose(1,0).repeat(1,512))
+            # oracle_emds = self.loss_function['spk'].spk_embeddings.gather(dim=0, index=oracle_ids.transpose(1,0).repeat(1,embed_dim))
+            # samples['intra_avg_distance'].append(torch.norm(reordered[0,:,:]-oracle_emds,dim=1).sum(0).item()/2)
+            samples['inter_spk_distance'].append(torch.norm(reordered[0,0,:]-reordered[0,1,:]).item())
+            samples['name'].append(filename)
 
-            # self.intra_avg_distance.append(torch.norm(reordered[0,:,:]-oracle_emds,dim=1).sum(0).item()/2)
-            self.inter_spk_distance.append(torch.norm(reordered[0,0,:]-reordered[0,1,:]).item())
-            self.sdr_improve.append(c_e - c_m)
+        # intra_spk_distance / inter_spk_distance+
 
-            # visualize spec / audio / spk_id_distribution
-            self._visuliza_spec_audio(0, 0, mixture, s1, s2, s1_clean, s2_clean, name, c_e)
+        self._visuliza_spk_distribution(samples, epoch, prefix='test')
+        # cross spk distance
 
-        self.writer.add_scalars(f"Metrics/Test_SDR", {
-            "target and mixture": get_metrics_ave(sdr_c_m),
-            "target and enhanced": get_metrics_ave(sdr_c_e)
-        }, 0)
-        score = get_metrics_ave(sdr_c_e)
-        return score
+        return get_metrics_ave(samples['inter_spk_distance'])
 
-    def _visuliza_spec_audio(self, epoch, i, mixture, s1, s2, s1_clean, s2_clean, name, c_e, spk_vct=None, oracle_ids=None):
+    def _visuliza_spec_audio(self, epoch, i, mixture, s1, s2, s1_clean, s2_clean, name, c_e, spk_vct=None, oracle_ids=None, prefix='_'):
         visualize_audio_limit = self.validation_custom_config["visualize_audio_limit"]
         visualize_waveform_limit = self.validation_custom_config["visualize_waveform_limit"]
         visualize_spectrogram_limit = self.validation_custom_config["visualize_spectrogram_limit"]
         sr = self.validation_custom_config["sr"]
             # Visualize audio
         if i <= visualize_audio_limit:
-            self.writer.add_audio(f"Speech/{name}_Mixture", mixture, epoch, sample_rate=sr)
-            self.writer.add_audio(f"Speech/{name}_s1", s1, epoch, sample_rate=sr)
-            self.writer.add_audio(f"Speech/{name}_s2", s2, epoch, sample_rate=sr)
-            self.writer.add_audio(f"Speech/{name}_s1_clean", s1_clean, epoch, sample_rate=sr)
-            self.writer.add_audio(f"Speech/{name}_s2_clean", s2_clean, epoch, sample_rate=sr)
+            self.writer.add_audio(f"{prefix}Speech/{name}_Mixture", mixture, epoch, sample_rate=sr)
+            self.writer.add_audio(f"{prefix}Speech/{name}_s1", s1, epoch, sample_rate=sr)
+            self.writer.add_audio(f"{prefix}Speech/{name}_s2", s2, epoch, sample_rate=sr)
+            self.writer.add_audio(f"{prefix}Speech/{name}_s1_clean", s1_clean, epoch, sample_rate=sr)
+            self.writer.add_audio(f"{prefix}Speech/{name}_s2_clean", s2_clean, epoch, sample_rate=sr)
             # self.writer.add_audio(f"Speech/{name}_Reference", reference, epoch, sample_rate=sr)
 
         # Visualize waveform
@@ -273,14 +157,7 @@ class Trainer(BaseTrainer):
                 ))
                 librosa.display.waveshow(y, sr=sr, ax=ax[j])
             plt.tight_layout()
-            self.writer.add_figure(f"Waveform/{name}", fig, epoch)
-
-        # Visualize spectrogram
-        mixture_mag, _ = librosa.magphase(librosa.stft(mixture, n_fft=320, hop_length=160))
-        s1_mag, _ = librosa.magphase(librosa.stft(s1, n_fft=320, hop_length=160))
-        s2_mag, _ = librosa.magphase(librosa.stft(s2, n_fft=320, hop_length=160))
-        s1_clean_mag, _ = librosa.magphase(librosa.stft(s1_clean, n_fft=320, hop_length=160))
-        s2_clean_mag, _ = librosa.magphase(librosa.stft(s2_clean, n_fft=320, hop_length=160))
+            self.writer.add_figure(f"{prefix}Waveform/{name}", fig, epoch)
 
         # print(f"Value: {c_e - c_m} \n"
         #       f"Mean: {get_metrics_ave(sdr_c_e) - get_metrics_ave(sdr_c_m)}")
@@ -294,9 +171,16 @@ class Trainer(BaseTrainer):
         # plt.axis('equal')
         ax.set_xlim(0,2)
         ax.set_ylim(-30,30)
-        self.writer.add_figure("spk_distance/sdr", fig, epoch)
+        self.writer.add_figure(f"{prefix}spk_distance/sdr", fig, epoch)
 
+        # Visualize spectrogram
         if i <= visualize_spectrogram_limit:
+            mixture_mag, _ = librosa.magphase(librosa.stft(mixture, n_fft=320, hop_length=160))
+            s1_mag, _ = librosa.magphase(librosa.stft(s1, n_fft=320, hop_length=160))
+            s2_mag, _ = librosa.magphase(librosa.stft(s2, n_fft=320, hop_length=160))
+            s1_clean_mag, _ = librosa.magphase(librosa.stft(s1_clean, n_fft=320, hop_length=160))
+            s2_clean_mag, _ = librosa.magphase(librosa.stft(s2_clean, n_fft=320, hop_length=160))
+            
             fig, axes = plt.subplots(5, 1, figsize=(6, 10))
             for k, mag in enumerate([
                 mixture_mag,
@@ -314,8 +198,61 @@ class Trainer(BaseTrainer):
                 librosa.display.specshow(librosa.amplitude_to_db(mag), cmap="magma", y_axis="linear", ax=axes[k],
                                         sr=sr)
             plt.tight_layout()
-            self.writer.add_figure(f"Spectrogram/{name}", fig, epoch)
+            self.writer.add_figure(f"{prefix}Spectrogram/{name}", fig, epoch)
 
+    def _visuliza_spk_distribution(self, samples, epoch, spk_emd_table=None, spk2indx=None, prefix='_'):
+        # visulize the speaker distance
+        
+        if samples['sdr_improve']:
+            fig, ax = plt.subplots()
+            ax.scatter(samples['inter_spk_distance'], samples['sdr_improve'], color='tab:red',alpha=0.5)
+            if samples['intra_avg_distance']:
+                ax.scatter(samples['intra_avg_distance'], samples['sdr_improve'], color='tab:blue',alpha=0.5)
+            ax.set_xlim(0,2)
+            ax.set_ylim(-30,30)
+            self.writer.add_figure(f"{prefix}spk_distance/sdr", fig, epoch)
+
+        # visulize the distance distribution
+        num_bins = 30
+        fig, ax = plt.subplots()
+        # the histogram of the data
+        n, bins, patches = ax.hist(samples['inter_spk_distance'], num_bins, color='tab:red', alpha=0.5)
+        ax.set_xlabel('distance')
+        ax.set_ylabel('sample times')
+        # ax.set_title(r'Histogram of IQ: $\mu=100$, $\sigma=15$')
+        self.writer.add_figure(f"{prefix}spk_distance/inter", fig, epoch)
+        fig, ax = plt.subplots()
+        if samples['intra_avg_distance']:
+            n, bins, patches = ax.hist(samples['intra_avg_distance'], num_bins, color='tab:blue', alpha=0.5)
+            self.writer.add_figure(f"{prefix}spk_distance/intra", fig, epoch)
+
+        # spk embedding table
+        if spk_emd_table is not None:
+            spk_cross_distance = (spk_emd_table @ spk_emd_table.T).cpu().numpy()
+            fig = plt.figure(figsize=(10,10))
+            ax = fig.subplots()
+            ax.imshow(spk_cross_distance)
+
+            distance_mean = spk_cross_distance.mean()
+            distance_max = spk_cross_distance.max()
+
+            ax.set_title(f"max:{distance_max:.2f}, mean:{distance_mean:.3f}")
+
+            # indx2spk = dict([val,key] for key,val in spk2indx.items())
+            # spk_list = [indx2spk[i] for i in range(len(indx2spk))]
+            # ax.set_xticks(np.arange(len(spk_list)), labels=spk_list)
+            # ax.set_yticks(np.arange(len(spk_list)), labels=spk_list)
+            # plt.setp(ax.get_xticklabels(), rotation=90, ha="right", rotation_mode="anchor")
+
+            # for i in range(len(spk_list)):
+            #     for j in range(len(spk_list)):
+            #         text = ax.text(j, i, spk_cross_distance[i, j], ha="center", va="center", color="w", fontsize=4)
+            self.writer.add_figure(f"{prefix}spk_cross_distance", fig, epoch)
+
+    @torch.no_grad()
+    def _test_epoch(self, epoch):
+        return self._inference(epoch=epoch)
+        
     def _save_checkpoint(self, epoch, is_best=False):
         """Save checkpoint to <root_dir>/checkpoints directory, which contains:
             - current epoch
@@ -331,16 +268,17 @@ class Trainer(BaseTrainer):
         state_dict = {
             "epoch": epoch,
             "best_score": self.best_score,
-            "optimizer": self.optimizer.state_dict()
+            "optimizer": self.optimizer.state_dict(),
+            "model": {
+                "spk": None,
+                "sep": None
+            }
         }
 
-        if isinstance(self.model, torch.nn.DataParallel):  # Parallel
-            state_dict["model"] = self.model.module.cpu().state_dict()
-        else:
-            state_dict["model"] = self.model.cpu().state_dict()
-
-        # spk embedding table in spk stack loss
-        state_dict["loss_spk_emd_table"] = self.loss_function['spk'].state_dict()
+        net = self.model.module.cpu() if isinstance(self.model, torch.nn.DataParallel) else self.model.cpu()
+        # speaker / separation / emd table
+        state_dict["model"]["spk"] = net.spk_stack.state_dict()
+        state_dict["model"]["emd"] = self.loss_function['spk'].state_dict()
         """
         Notes:
             - latest_model.tar:
@@ -378,13 +316,10 @@ class Trainer(BaseTrainer):
                 if isinstance(v, torch.Tensor):
                     state[k] = v.cuda()
 
-        if isinstance(self.model, torch.nn.DataParallel):
-            self.model.module.load_state_dict(checkpoint["model"])
-        else:
-            self.model.load_state_dict(checkpoint["model"])
-
-        if self.load_spk_emd:
-            self.loss_function['spk'].load_state_dict(checkpoint["loss_spk_emd_table"])
+        net = self.model.module if isinstance(self.model, torch.nn.DataParallel) else self.model
+        net.spk_stack.load_state_dict(checkpoint["model"]['spk'])
+        # net.sep_stack.load_state_dict(checkpoint["model"]['sep'])
+        self.loss_function['spk'].load_state_dict(checkpoint["model"]['emd'])
 
         print(f"Model checkpoint loaded. Training will begin in {self.start_epoch} epoch.")
 
@@ -399,14 +334,11 @@ class Trainer(BaseTrainer):
         assert model_path.exists(), f"Preloaded *.pth file is not exist. Please check the file path: {model_path.as_posix()}"
         model_checkpoint = torch.load(model_path.as_posix(), map_location=self.device)
         if model_path.suffix == '.tar':
-            spk_emd_table = model_checkpoint['loss_spk_emd_table']
             model_checkpoint = model_checkpoint['model']
-        if isinstance(self.model, torch.nn.DataParallel):
-            self.model.module.load_state_dict(model_checkpoint)
-        else:
-            self.model.load_state_dict(model_checkpoint)
-        
-        if self.load_spk_emd:
-            self.loss_function['spk'].load_state_dict(spk_emd_table)
+
+        net = self.model.module if isinstance(self.model, torch.nn.DataParallel) else self.model
+        if self.load_spk_net: net.spk_stack.load_state_dict(model_checkpoint['spk'])
+        if self.load_sep_net: net.sep_stack.load_state_dict(model_checkpoint['sep'])
+        if self.load_spk_emd: self.loss_function['spk'].load_state_dict(model_checkpoint['emd'])
 
         print(f"Model preloaded successfully from {model_path.as_posix()}.")

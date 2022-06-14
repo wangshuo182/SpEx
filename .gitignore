@@ -131,3 +131,6 @@ dmypy.json
 exp
 cache
 .vscode
+
+amlt/
+.amltconfig

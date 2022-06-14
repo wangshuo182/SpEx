@@ -17,6 +17,7 @@ def main(config):
     torch.manual_seed(config["seed"])  # for both CPU and GPU
     np.random.seed(config["seed"])
 
+    config["train_dataset"]["args"]["load_into_memory"] = config["use_memory"]
     train_dataset = initialize_config(config["train_dataset"])
     config["validation_dataset"]["args"]["spk2indx"] = train_dataset.get_spk2indx()
     val_dataset = initialize_config(config["validation_dataset"])
@@ -48,6 +49,7 @@ def main(config):
     model = initialize_config(config["model"])
 
     config["loss_function"]["args"]["n_speakers"] = len(train_dataset.spk2indx)
+    config["loss_function"]["args"]["learnable_emb"] = config['optimizer']['update_emb']
     loss_function = initialize_config(config["loss_function"])
 
 
@@ -113,6 +115,11 @@ if __name__ == '__main__':
         action="store_true",
         help="only_inference_in_cv_dataset"
     )
+    parser.add_argument(
+        "-M", "--use_memory",
+        action="store_true",
+        help="use_memory_for_preloading_dataset"
+    )
     args = parser.parse_args()
 
     if args.preloaded_model_path:
@@ -128,6 +135,7 @@ if __name__ == '__main__':
     configuration["omit_visualize_unprocessed_speech"] = args.omit_visualize_unprocessed_speech
     configuration["use_cpu"] = args.use_cpu
     configuration["only_inference"] = args.only_inference
+    configuration["use_memory"] = args.use_memory
 
     main(configuration)
     

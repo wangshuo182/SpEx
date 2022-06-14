@@ -44,8 +44,9 @@ class Dataset(data.Dataset):
             separation tasks.
     """
 
-    def __init__(self, dataset_list, limit=None, offset=0, sample_rate=8000, segment=None, nondefault_nsrc=2, spk2indx=None):
+    def __init__(self, dataset_list, limit=None, offset=0, sample_rate=8000, segment=None, nondefault_nsrc=2, spk2indx=None, load_into_memory=False):
         super(Dataset, self).__init__()
+        self.load_in_memory = load_into_memory
 
         dataset_list = [line.rstrip('\n') for line in open(os.path.abspath(os.path.expanduser(dataset_list)), "r")]
         dataset_list = dataset_list[offset:]
@@ -106,8 +107,12 @@ class Dataset(data.Dataset):
             self.spk2indx = spk2indx
 
         self.mix_wav_spk_list = []
+        self.file_cache = []
         for ex in mix_wav_path_list:
             tmp = []
+            if self.load_in_memory:
+                x, _ = sf.read(ex, dtype="float32")
+                self.file_cache.append(x) 
             spkids = self.get_speaker_id(self.get_filename(ex))
             for spk in spkids:
                 tmp.append(spk2indx[spk])
@@ -127,7 +132,10 @@ class Dataset(data.Dataset):
         filename = self.get_filename(mix_path)
 
         # Load mixture
-        x, _ = sf.read(mix_path, dtype="float32")
+        if self.load_in_memory:
+            x = self.file_cache[idx]
+        else:
+            x, _ = sf.read(mix_path, dtype="float32")
         sample_len = len(x)
 
         # Random start

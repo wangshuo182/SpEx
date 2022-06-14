@@ -23,7 +23,7 @@ class SpeakerVectorLoss(nn.Module):
         self,
         n_speakers,
         embed_dim=512,
-        learnable_emb=True,
+        learnable_emb=False,
         loss_type="global",
         weight=2,
         distance_reg=0.0,
@@ -79,10 +79,10 @@ class SpeakerVectorLoss(nn.Module):
 
         return (distance + torch.log(distances)).sum(1)
 
-    def _l_global_speaker(self, c_spk_vec_perm, spk_embeddings, spk_labels, spk_mask):
+    def _l_global_speaker(self, c_spk_vec_perm, spk_embeddings, spk_labels):
 
-        utt_embeddings = spk_embeddings[spk_labels].unsqueeze(-1) * spk_mask.unsqueeze(2)
-        alpha = torch.clamp(self.alpha, 1e-8)
+        utt_embeddings = spk_embeddings[spk_labels].unsqueeze(-1)
+        alpha = torch.clamp(self.alpha, min=1e-8)
 
         distance_utt = alpha * ((c_spk_vec_perm - utt_embeddings) ** 2).sum(2) + self.beta
 
@@ -91,10 +91,10 @@ class SpeakerVectorLoss(nn.Module):
             B, -1, -1, frames
         )
         distances = (
-            alpha * ((c_spk_vec_perm.unsqueeze(1) - spk_embeddings.unsqueeze(2)) ** 2).sum(3)
-            + self.beta
+            alpha * ((c_spk_vec_perm.unsqueeze(1) - spk_embeddings.unsqueeze(2)) ** 2).sum(3) + self.beta
         )
         distances = torch.exp(-distances).sum(1)
+
 
         return (distance_utt + torch.log(distances)).sum(1)
 
@@ -133,7 +133,6 @@ class SpeakerVectorLoss(nn.Module):
         # spk indxs list of len B of list which contains spk label for current utterance
         B, n_src, embed_dim, frames = speaker_vectors.size()
 
-        n_src = speaker_vectors.shape[1]
         perms = list(permutations(range(n_src)))
         if self.loss_type == "distance":
             loss_set = torch.stack(
@@ -159,7 +158,7 @@ class SpeakerVectorLoss(nn.Module):
             loss_set = torch.stack(
                 [
                     self._l_global_speaker(
-                        speaker_vectors[:, perm], spk_embeddings, spk_labels, spk_mask
+                        speaker_vectors[:, perm], spk_embeddings, spk_labels
                     )
                     for perm in perms
                 ],
@@ -216,9 +215,9 @@ def multi_scale_si_sdr_loss(weights):
 
     return _loss_function
 
-def wavesplit_loss(n_speakers=2, embed_dim=512, loss_type="distance", gaussian_reg=0, distance_reg=0, weight=2):
+def wavesplit_loss(n_speakers=2, embed_dim=512, loss_type="distance", gaussian_reg=0, distance_reg=0, weight=2, learnable_emb=False):
     loss_spk = SpeakerVectorLoss(
-        n_speakers, embed_dim, loss_type=loss_type, gaussian_reg=gaussian_reg, distance_reg=distance_reg, weight=weight
+        n_speakers, embed_dim, loss_type=loss_type, gaussian_reg=gaussian_reg, distance_reg=distance_reg, weight=weight, learnable_emb=learnable_emb
     )
     loss_sep = ClippedSDR()
     return {'spk':loss_spk, 'sep':loss_sep}

@@ -240,7 +240,8 @@ class Wavesplit(nn.Module):
 
         self.n_src = n_src
         self.spk_stack = SpeakerStack(n_src, **spk_stack_kwargs)
-        self.sep_stack = SeparationStack(n_src, **sep_stack_kwargs)
+        if sep_stack_kwargs:
+            self.sep_stack = SeparationStack(n_src, **sep_stack_kwargs)
 
     def _check_input_shape(self, x):
         if x.ndim < 3:
