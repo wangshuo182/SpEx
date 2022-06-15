@@ -13,6 +13,9 @@ class BaseTrainer:
         self.n_gpu = 0 if config["use_cpu"] else torch.cuda.device_count()
         self.device = self._prepare_device(self.n_gpu, cudnn_deterministic=config["cudnn_deterministic"])
         self.only_inference = config["only_inference"]
+        self.eval_before_train = config["eval_before_train"]
+        self.debug_mode = config["debug_mode"]
+        if self.debug_mode: config["root_dir"] = "cache"
         # print("n_gpu:{}".format(self.n_gpu))
         
         self.load_spk_emd = config['trainer']['load_spk_emd']
@@ -227,8 +230,18 @@ class BaseTrainer:
             # self._on_validation_epoch_start()
             score = self._inference()
             print(f"[{timer.duration()} seconds] Done the inference.")
-            print(f"[{timer.duration()} seconds] Done the inference.")
             return
+        
+        if self.eval_before_train:
+            print("======validation and test before epoch 0 or checkpoint======")
+            timer = ExecutionTime()
+            self._set_models_to_eval_mode()
+            self._on_validation_epoch_start()
+            val_score = self._validation_epoch(0)
+            print(f"[{timer.duration()} seconds] Done the Inference on Val set.")
+            test_score = self._inference()
+            print(f"[{timer.duration()} seconds] Done the inference on Test set.")
+            print(f"[val: {val_score:.2f}] [test: {test_score:.2f}] scores yield before traning.")
 
         for epoch in range(self.start_epoch, self.epochs + 1):
             print(f"============== {epoch} epoch ==============")

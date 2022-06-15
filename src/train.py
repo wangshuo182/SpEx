@@ -88,17 +88,17 @@ if __name__ == '__main__':
         "-C", "--configuration",
         required=True,
         type=str,
-        help="指定用于训练的配置文件 *.yaml"
+        help="select config file for training <*.yaml>"
     )
     parser.add_argument(
-        "-O", "--omit_visualize_unprocessed_speech",
+        "-E", "--eval_before_train",
         action="store_true",
-        help="每次实验开始时（首次或重启），会在验证集上计算基准性能（未处理时的）。 可以通过此选项跳过这个步骤。"
+        help="evaluation on val and test set before training"
     )
     parser.add_argument(
         "-P", "--preloaded_model_path",
         type=str,
-        help="预加载的模型路径。"
+        help="preloaded_model_path"
     )
     parser.add_argument(
         "-R", "--resume",
@@ -120,22 +120,26 @@ if __name__ == '__main__':
         action="store_true",
         help="use_memory_for_preloading_dataset"
     )
+    parser.add_argument(
+        "-D", "--debug_mode",
+        action="store_true",
+        help="The results will not stored in <exp/> in this mode"
+    )
     args = parser.parse_args()
 
     if args.preloaded_model_path:
         assert args.resume == False, "Resume conflict with preloaded model. Please use one of them."
-
-    # configuration = json5.load(open(args.configuration))
     
     with open(args.configuration) as f:
         configuration = yaml.safe_load(f)
     configuration["experiment_name"], _ = os.path.splitext(os.path.basename(args.configuration))
     configuration["config_path"] = args.configuration
     configuration["preloaded_model_path"] = args.preloaded_model_path
-    configuration["omit_visualize_unprocessed_speech"] = args.omit_visualize_unprocessed_speech
+    configuration["eval_before_train"] = args.eval_before_train
     configuration["use_cpu"] = args.use_cpu
     configuration["only_inference"] = args.only_inference
     configuration["use_memory"] = args.use_memory
+    configuration["debug_mode"] = args.debug_mode
 
     main(configuration)
     
