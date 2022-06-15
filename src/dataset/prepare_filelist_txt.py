@@ -18,7 +18,8 @@ def save_wav_path_to_txt(root_path, split, pairs):
 
 if __name__ == "__main__":
     # root_path = '/media/asus/DATADISK/DATASETS/wsj0-mix/2speakers/wav8k/min'
-    root_path = '/workspace/myDataset/wsj0-mix/2speakers/wav8k/min'
+    # root_path = '/workspace/myDataset/wsj0-mix/2speakers/wav8k/min'
+    root_path = '/home/v-shuowang/myData/wsj0-mix/2speakers/wav8k/min'
     splits = ['tr', 'cv', 'tt']
     pairs = ['mix', 's1', 's2']
     # pairs = ['mix', 's1', 'aux']
