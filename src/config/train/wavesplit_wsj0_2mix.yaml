@@ -3,7 +3,7 @@ description: 'null'
 root_dir: exp/wavesplit
 # root_dir: cache
 resume: false
-# resume_timestamp: 20220612-201304
+# resume_timestamp: 20220614-011049
 cudnn_deterministic: false
 trainer:
   module: trainer.wavesplit_trainer
@@ -12,7 +12,7 @@ trainer:
   save_checkpoint_interval: 1
   load_spk_emd: true
   load_spk_net: true
-  load_sep_net: false
+  load_sep_net: true
   speaker_dropout: 0.2
   validation:
     interval: 1
