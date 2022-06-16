@@ -1,7 +1,7 @@
 import time
 from pathlib import Path
 
-import json5
+import yaml
 import numpy as np
 import torch
 from util import visualization
@@ -53,7 +53,7 @@ class BaseTrainer:
         self.writer = visualization.writer(self.logs_dir.as_posix())
         self.writer.add_text(
             tag="Configuration",
-            text_string=f"<pre>  \n{json5.dumps(config, indent=4, sort_keys=False)}  \n</pre>",
+            text_string=f"<pre>  \n{yaml.dump(config, sort_keys=False)}  \n</pre>",
             global_step=1
         )
 
@@ -61,10 +61,10 @@ class BaseTrainer:
         if config["preloaded_model_path"]: self._preload_model(Path(config["preloaded_model_path"]))
 
         print("Configurations are as follows: ")
-        print(json5.dumps(config, indent=2, sort_keys=False))
+        print(yaml.dump(config, sort_keys=False))
 
-        with open((self.root_dir / f"{time.strftime('%Y-%m-%d-%H-%M-%S')}.json").as_posix(), "w") as handle:
-            json5.dump(config, handle, indent=2, sort_keys=False)
+        with open((self.root_dir / f"{time.strftime('%Y-%m-%d-%H-%M-%S')}.yaml").as_posix(), "w") as handle:
+            yaml.dump(config, handle, sort_keys=False)
 
         self._print_networks([self.model])
 

@@ -128,9 +128,11 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# shuowang
 exp
 cache
 .vscode
 
 amlt/
 .amltconfig
+wavesplit/
