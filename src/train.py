@@ -17,11 +17,14 @@ def main(config):
     np.random.seed(config["seed"])
 
     config["train_dataset"]["args"]["load_into_memory"] = config["use_memory"]
+    config["train_dataset"]["args"]["dataset_list"] = os.path.join(config["data_dir"], config["train_dataset"]["args"]["dataset_list"])
     train_dataset = initialize_config(config["train_dataset"])
     config["validation_dataset"]["args"]["spk2indx"] = train_dataset.get_spk2indx()
+    config["validation_dataset"]["args"]["dataset_list"] = os.path.join(config["data_dir"], config["validation_dataset"]["args"]["dataset_list"])
     val_dataset = initialize_config(config["validation_dataset"])
+    config["test_dataset"]["args"]["dataset_list"] = os.path.join(config["data_dir"], config["test_dataset"]["args"]["dataset_list"])
     test_dataset = initialize_config(config["test_dataset"])
-
+ 
     train_dataloader = DataLoader(
         dataset = train_dataset,
         batch_size=config["train_dataloader"]["batch_size"],
@@ -124,6 +127,11 @@ if __name__ == '__main__':
         action="store_true",
         help="The results will not stored in <exp/> in this mode"
     )
+    parser.add_argument(
+        "-A", "--training_on_GCR",
+        action="store_true",
+        help="The results will not stored in <exp/> in this mode"
+    )
     args = parser.parse_args()
 
     if args.preloaded_model_path:
@@ -139,6 +147,10 @@ if __name__ == '__main__':
     configuration["only_inference"] = args.only_inference
     configuration["use_memory"] = args.use_memory
     configuration["debug_mode"] = args.debug_mode
+
+    if args.training_on_GCR: 
+        configuration["data_dir"] = os.environ['AMLT_DATA_DIR']
+        configuration["output_dir"] = os.environ['AMLT_OUTPUT_DIR']
 
     main(configuration)
     

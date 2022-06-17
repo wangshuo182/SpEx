@@ -1,5 +1,6 @@
 import time
 from pathlib import Path
+import os
 
 import yaml
 import numpy as np
@@ -15,7 +16,7 @@ class BaseTrainer:
         self.only_inference = config["only_inference"]
         self.eval_before_train = config["eval_before_train"]
         self.debug_mode = config["debug_mode"]
-        if self.debug_mode: config["root_dir"] = "cache"
+        if self.debug_mode: config["output_dir"] = "cache"
         # print("n_gpu:{}".format(self.n_gpu))
         
         self.load_spk_emd = config['trainer']['load_spk_emd']
@@ -41,13 +42,13 @@ class BaseTrainer:
         # The following args is not in the config file. We'll update them in later if resume is True.
         self.start_epoch = 1
         self.best_score = -np.inf if self.find_max else np.inf
-        self.root_dir = Path(config["root_dir"]).expanduser().absolute() / config["experiment_name"]
+        self.output_dir = Path(config["output_dir"]).expanduser().absolute() / config["experiment_name"]
         if resume:
             timestamp = config["resume_timestamp"]
         else:
             timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        self.checkpoints_dir = self.root_dir / timestamp / "checkpoints"
-        self.logs_dir = self.root_dir / timestamp / "logs"
+        self.checkpoints_dir = self.output_dir / timestamp / "checkpoints"
+        self.logs_dir = self.output_dir / timestamp / "logs"
         prepare_empty_dir([self.checkpoints_dir, self.logs_dir], resume=resume)
 
         self.writer = visualization.writer(self.logs_dir.as_posix())
@@ -63,7 +64,7 @@ class BaseTrainer:
         print("Configurations are as follows: ")
         print(yaml.dump(config, sort_keys=False))
 
-        with open((self.root_dir / f"{time.strftime('%Y-%m-%d-%H-%M-%S')}.yaml").as_posix(), "w") as handle:
+        with open((self.output_dir / f"{time.strftime('%Y-%m-%d-%H-%M-%S')}.yaml").as_posix(), "w") as handle:
             yaml.dump(config, handle, sort_keys=False)
 
         self._print_networks([self.model])
@@ -113,13 +114,13 @@ class BaseTrainer:
         print(f"Model checkpoint loaded. Training will begin in {self.start_epoch} epoch.")
 
     def _save_checkpoint(self, epoch, is_best=False):
-        """Save checkpoint to <root_dir>/checkpoints directory, which contains:
+        """Save checkpoint to <output_dir>/checkpoints directory, which contains:
             - current epoch
             - best score in history
             - optimizer parameters
             - model parameters
         Args:
-            is_best(bool): if current checkpoint got the best score, it also will be saved in <root_dir>/checkpoints/best_model.tar.
+            is_best(bool): if current checkpoint got the best score, it also will be saved in <output_dir>/checkpoints/best_model.tar.
         """
         print(f"\t Saving {epoch} epoch model checkpoint...")
 

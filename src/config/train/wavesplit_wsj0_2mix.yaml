@@ -1,7 +1,7 @@
 seed: 182
 description: 'null'
-# root_dir: exp/wavesplit
-root_dir: cache
+# output_dir: exp/wavesplit
+output_dir: cache
 resume: false
 # resume_timestamp: 20220614-011049
 cudnn_deterministic: false

@@ -1,0 +1,82 @@
+seed: 182
+description: 'null'
+output_dir: exp/wavesplit
+data_dir: /home/v-shuowang/myData/wsj0-mix
+resume: false
+# resume_timestamp: 20220614-174251
+cudnn_deterministic: false
+trainer:
+  module: trainer.wavesplit_speaker_trainer
+  main: Trainer
+  epochs: 1
+  save_checkpoint_interval: 1
+  load_spk_emd: true
+  load_spk_net: true
+  load_sep_net: false
+  validation:
+    interval: 1
+    find_max: true
+    custom:
+model:
+  module: model.wavesplit
+  main: Wavesplit
+  args:
+    n_src: 2
+    spk_stack_kwargs:
+      embed_dim: 512
+      n_blocks: 14
+      # n_blocks: 2
+      n_repeats: 1
+loss_function:
+  module: model.loss
+  main: wavesplit_loss
+  train_emb: true
+  args:
+    embed_dim: 512
+    loss_type: global
+    # gaussian_reg: 0.2
+    distance_reg: 0.2
+    weight: 1
+optimizer:
+  lr: 0.001
+  update_emb: true
+  lr_loss: 0.001
+  update_spk: true
+  lr_spk: 0.001
+  update_sep: false
+  lr_sep: 0.001
+train_dataset:
+  module: dataset.wsj0_mix_source_spkid_name
+  main: Dataset
+  args:
+    # dataset_list: /workspace/myDataset/wsj0-mix/2speakers/wav8k/min/wav_list_tr.txt
+    # dataset_list: src/dataset/wav_list_tr.txt
+    dataset_list: 2speakers/wav8k/min/wav_list_tr.txt
+    segment: 1
+    limit: 1000
+    offset: 0
+validation_dataset:
+  module: dataset.wsj0_mix_source_spkid_name
+  main: Dataset
+  args:
+    # dataset_list: /workspace/myDataset/wsj0-mix/2speakers/wav8k/min/wav_list_cv.txt
+    # dataset_list: src/dataset/wav_list_cv.txt
+    dataset_list: 2speakers/wav8k/min/wav_list_cv.txt
+    segment: 5
+    limit: 500
+    offset: 0
+test_dataset:
+  module: dataset.wsj0_mix_source_spkid_name
+  main: Dataset
+  args:
+    # dataset_list: /workspace/myDataset/wsj0-mix/2speakers/wav8k/min/wav_list_tt.txt
+    # dataset_list: src/dataset/wav_list_tt.txt
+    dataset_list: 2speakers/wav8k/min/wav_list_tt.txt
+    segment: 5
+    limit: 500
+    offset: 0
+train_dataloader:
+  batch_size: 8
+  num_workers: 0
+  shuffle: true
+  pin_memory: true

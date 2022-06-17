@@ -110,19 +110,20 @@ class SpeakerVectorLoss(nn.Module):
             noise = torch.randn(
                 self.spk_embeddings.size(), device=speaker_vectors.device
             ) * math.sqrt(self.gaussian_reg)
-            spk_embeddings = self.spk_embeddings + noise.to(spk_labels)
-        else:
-            spk_embeddings = self.spk_embeddings
+            self.spk_embeddings = self.spk_embeddings + noise.to(spk_labels)
+        # else:
+        #     spk_embeddings = self.spk_embeddings
 
         if self.learnable_emb or self.gaussian_reg:  # re project on unit sphere
             # re-project on unit sphere
-            spk_embeddings = (
-                spk_embeddings / torch.sum(spk_embeddings ** 2, -1, keepdim=True).sqrt()
-            )
+            self.spk_embeddings = nn.Parameter(nn.functional.normalize(self.spk_embeddings))
+            # self.spk_embeddings = (
+            #     self.spk_embeddings / torch.sum(self.spk_embeddings ** 2, -1, keepdim=True).sqrt()
+            # )
 
         if self.distance_reg:
             pairwise_dist = (
-                (torch.abs(spk_embeddings.unsqueeze(0) - spk_embeddings.unsqueeze(1)))
+                (torch.abs(self.spk_embeddings.unsqueeze(0) - self.spk_embeddings.unsqueeze(1)))
                 .mean(-1)
                 .fill_diagonal_(np.inf)
             )
@@ -138,7 +139,7 @@ class SpeakerVectorLoss(nn.Module):
             loss_set = torch.stack(
                 [
                     self._l_dist_speaker(
-                        speaker_vectors[:, perm], spk_embeddings, spk_labels, spk_mask
+                        speaker_vectors[:, perm], self.spk_embeddings, spk_labels, spk_mask
                     )
                     for perm in perms
                 ],
@@ -148,7 +149,7 @@ class SpeakerVectorLoss(nn.Module):
             loss_set = torch.stack(
                 [
                     self._l_local_speaker(
-                        speaker_vectors[:, perm], spk_embeddings, spk_labels, spk_mask
+                        speaker_vectors[:, perm], self.spk_embeddings, spk_labels, spk_mask
                     )
                     for perm in perms
                 ],
@@ -158,7 +159,7 @@ class SpeakerVectorLoss(nn.Module):
             loss_set = torch.stack(
                 [
                     self._l_global_speaker(
-                        speaker_vectors[:, perm], spk_embeddings, spk_labels
+                        speaker_vectors[:, perm], self.spk_embeddings, spk_labels
                     )
                     for perm in perms
                 ],
@@ -184,8 +185,8 @@ class SpeakerVectorLoss(nn.Module):
         reordered_sources = torch.gather(speaker_vectors, dim=1, index=min_loss_perm)
 
         if self.return_oracle:
-            spk_embeddings = spk_embeddings.to(spk_labels)
-            utt_embeddings = spk_embeddings[spk_labels].unsqueeze(-1) * spk_mask.unsqueeze(2)
+            self.spk_embeddings = self.spk_embeddings.to(spk_labels)
+            utt_embeddings = self.spk_embeddings[spk_labels].unsqueeze(-1) * spk_mask.unsqueeze(2)
             return spk_loss, reordered_sources, utt_embeddings
 
         return spk_loss, reordered_sources

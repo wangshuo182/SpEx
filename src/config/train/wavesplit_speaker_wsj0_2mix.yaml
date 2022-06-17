@@ -1,6 +1,7 @@
 seed: 182
 description: 'null'
-root_dir: exp/wavesplit
+output_dir: exp/wavesplit
+data_dir: /home/v-shuowang/myData/wsj0-mix
 resume: false
 # resume_timestamp: 20220614-174251
 cudnn_deterministic: false
@@ -50,7 +51,7 @@ train_dataset:
   args:
     # dataset_list: /workspace/myDataset/wsj0-mix/2speakers/wav8k/min/wav_list_tr.txt
     # dataset_list: src/dataset/wav_list_tr.txt
-    dataset_list: /home/v-shuowang/myData/wsj0-mix/2speakers/wav8k/min/wav_list_tr.txt
+    dataset_list: 2speakers/wav8k/min/wav_list_tr.txt
     segment: 1
     # limit: 300
     offset: 0
@@ -60,7 +61,7 @@ validation_dataset:
   args:
     # dataset_list: /workspace/myDataset/wsj0-mix/2speakers/wav8k/min/wav_list_cv.txt
     # dataset_list: src/dataset/wav_list_cv.txt
-    dataset_list: /home/v-shuowang/myData/wsj0-mix/2speakers/wav8k/min/wav_list_cv.txt
+    dataset_list: 2speakers/wav8k/min/wav_list_cv.txt
     segment: 5
     limit: 500
     offset: 0
@@ -70,7 +71,7 @@ test_dataset:
   args:
     # dataset_list: /workspace/myDataset/wsj0-mix/2speakers/wav8k/min/wav_list_tt.txt
     # dataset_list: src/dataset/wav_list_tt.txt
-    dataset_list: /home/v-shuowang/myData/wsj0-mix/2speakers/wav8k/min/wav_list_tt.txt
+    dataset_list: 2speakers/wav8k/min/wav_list_tt.txt
     segment: 5
     limit: 500
     offset: 0

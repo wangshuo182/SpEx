@@ -213,13 +213,13 @@ class Trainer(BaseTrainer):
         return score
 
     def _save_checkpoint(self, epoch, is_best=False):
-        """Save checkpoint to <root_dir>/checkpoints directory, which contains:
+        """Save checkpoint to <output_dir>/checkpoints directory, which contains:
             - current epoch
             - best score in history
             - optimizer parameters
             - model parameters
         Args:
-            is_best(bool): if current checkpoint got the best score, it also will be saved in <root_dir>/checkpoints/best_model.tar.
+            is_best(bool): if current checkpoint got the best score, it also will be saved in <output_dir>/checkpoints/best_model.tar.
         """
         print(f"\t Saving {epoch} epoch model checkpoint...")
 
